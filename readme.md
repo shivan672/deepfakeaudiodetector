@@ -38,3 +38,6 @@ Real class accuracy=99.90%
 Fake class accuracy=77.90%
 
 A full breakdown including the confusion matrix, ROC curve, DET curve, and prediction score distributions is available in evaluation_report.png.
+
+##Demo Video
+Link:https://drive.google.com/file/d/1CnWCybdgB7GZWpODiF_hV3XUI5hZa3WX/view?usp=sharing
