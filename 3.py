@@ -17,7 +17,6 @@ import json
 import warnings
 warnings.filterwarnings('ignore')
 
-# ─── CONFIG ───────────────────────────────────────────
 BASE_PATH       = "C:/Users/tempadmin/Downloads/archive/for-norm/for-norm/"
 TARGET_SR       = 16000
 TARGET_DURATION = 2.0
@@ -25,7 +24,6 @@ TARGET_SAMPLES  = int(TARGET_SR * TARGET_DURATION)
 N_MELS          = 64
 HOP_LENGTH      = 256
 
-# ─── STEP 1: FEATURE EXTRACTION ───────────────────────
 def load_and_standardize(file_path):
     audio, sr = librosa.load(file_path, sr=TARGET_SR, mono=True)
     if len(audio) == 0 or np.max(np.abs(audio)) < 1e-6:
@@ -81,7 +79,6 @@ def extract_features(file_path):
     except Exception as e:
         return None
 
-# ─── STEP 2: BUILD DATASET ────────────────────────────
 def build_dataset(base_path):
     records = []
     for split in ['training', 'validation', 'testing']:
@@ -99,7 +96,6 @@ def build_dataset(base_path):
 df = build_dataset(BASE_PATH)
 print(f"Total files: {len(df)}")
 
-# ─── STEP 3: BALANCE SPLITS ───────────────────────────
 def balance_split(df, split_name, max_per_class=5000):
     split_df = df[df['split'] == split_name]
     real = split_df[split_df['label'] == 0]
@@ -114,11 +110,10 @@ train_df = balance_split(df, 'training',   max_per_class=5000)
 val_df   = balance_split(df, 'validation', max_per_class=1000)
 test_df  = balance_split(df, 'testing',    max_per_class=1000)
 
-# ─── STEP 4: EXTRACT FEATURES ─────────────────────────
 def extract_split(split_df, name):
     X_list, y_list = [], []
     failed = 0
-    print(f"\n⏳ Extracting {name}...")
+    print(f"\n Extracting {name}...")
     for _, row in tqdm(split_df.iterrows(), total=len(split_df)):
         feat = extract_features(row['file_path'])
         if feat is not None:
@@ -129,14 +124,14 @@ def extract_split(split_df, name):
     print(f"  Done. Failed: {failed}")
     return np.array(X_list, dtype=np.float32), np.array(y_list)
 
-# Test single file first
+
 print("\nTesting single file...")
 sample_file = df[df['label_name'] == 'real']['file_path'].iloc[0]
 test_feat = extract_features(sample_file)
 if test_feat is not None:
-    print(f"✅ Feature shape: {test_feat.shape}")
+    print(f" Feature shape: {test_feat.shape}")
 else:
-    print("❌ Failed"); exit()
+    print(" Failed"); exit()
 
 X_train, y_train = extract_split(train_df, 'training')
 X_val,   y_val   = extract_split(val_df,   'validation')
@@ -150,7 +145,6 @@ print(f"  X_val:   {X_val.shape}   — "
 print(f"  X_test:  {X_test.shape}  — "
       f"Real:{(y_test==0).sum()}  Fake:{(y_test==1).sum()}")
 
-# ─── STEP 5: BUILD LCNN ───────────────────────────────
 def mfm(x):
     shape = tf.shape(x)
     x1 = x[:, :, :, :shape[3]//2]
@@ -189,17 +183,16 @@ def build_lcnn(input_shape):
 model = build_lcnn(X_train.shape[1:])
 model.summary()
 
-# ─── STEP 6: COMPILE ──────────────────────────────────
 model.compile(
     optimizer=tf.keras.optimizers.Adam(learning_rate=0.0005),
     loss='binary_crossentropy',
     metrics=['accuracy']
 )
 
-# Higher weight for fake class
+
 class_weights = {
-    0: 1.0,   # real
-    1: 2.5    # fake
+    0: 1.0,   
+    1: 2.5    
 }
 
 cb = [
@@ -212,8 +205,7 @@ cb = [
                               save_best_only=True, verbose=1)
 ]
 
-# ─── STEP 7: TRAIN ────────────────────────────────────
-print("\n⏳ Training LCNN...")
+print("\n Training LCNN...")
 history = model.fit(
     X_train, y_train,
     validation_data=(X_val, y_val),
@@ -222,8 +214,6 @@ history = model.fit(
     class_weight=class_weights,
     callbacks=cb
 )
-
-# ─── STEP 8: FIND BEST THRESHOLD ──────────────────────
 print("\n🔍 Finding best threshold on validation set...")
 val_pred_proba = model.predict(X_val).flatten()
 thresholds = np.arange(0.1, 0.9, 0.01)
@@ -237,10 +227,9 @@ for t in thresholds:
         best_f1 = f1
         best_thresh = t
 
-print(f"✅ Best threshold: {best_thresh:.2f} "
+print(f" Best threshold: {best_thresh:.2f} "
       f"(val F1: {best_f1*100:.2f}%)")
 
-# ─── STEP 9: EVALUATE ON TEST ─────────────────────────
 def compute_eer(y_true, y_scores):
     fpr, tpr, _ = roc_curve(y_true, y_scores)
     fnr = 1 - tpr
@@ -265,21 +254,19 @@ print(f"  F1 Score:      {test_f1:.2f}%  (target ≥ 80%)")
 print(f"  EER:           {test_eer:.2f}%  (target ≤ 12%)")
 print(f"  Real Accuracy: {real_acc:.2f}%  (target ≥ 75%)")
 print(f"  Fake Accuracy: {fake_acc:.2f}%  (target ≥ 75%)")
-print(f"\n🎯 TARGETS MET:")
-print(f"  Accuracy ≥ 80%: {'✅' if test_acc >= 80 else '❌'}")
-print(f"  EER ≤ 12%:      {'✅' if test_eer <= 12 else '❌'}")
-print(f"  F1 ≥ 80%:       {'✅' if test_f1  >= 80 else '❌'}")
-print(f"  Per-class ≥75%: {'✅' if real_acc>=75 and fake_acc>=75 else '❌'}")
+print(f"\n TARGETS MET:")
+print(f"  Accuracy ≥ 80%: {'YES' if test_acc >= 80 else 'NO'}")
+print(f"  EER ≤ 12%:      {'YES' if test_eer <= 12 else 'NO'}")
+print(f"  F1 ≥ 80%:       {'YES' if test_f1  >= 80 else 'NO'}")
+print(f"  Per-class ≥75%: {'YES' if real_acc>=75 and fake_acc>=75 else 'NO'}")
 
-# ─── STEP 10: SAVE MODEL & THRESHOLD ──────────────────
 model.save("best_lcnn_final.keras")
-print("\n✅ Model saved as best_lcnn_final.keras")
+print("\n Model saved as best_lcnn_final.keras")
 
 with open("threshold.json", "w") as f:
     json.dump({"threshold": float(best_thresh)}, f)
-print(f"✅ Threshold saved: {best_thresh:.2f}")
+print(f" Threshold saved: {best_thresh:.2f}")
 
-# ─── STEP 11: PLOTS ───────────────────────────────────
 fig, axes = plt.subplots(1, 3, figsize=(18, 5))
 
 axes[0].plot(history.history['accuracy'], label='Train')
@@ -302,4 +289,3 @@ plt.tight_layout()
 plt.savefig("lcnn_results.png")
 plt.show()
 
-print("\n🎉 Phase 3 v6 Complete!")
