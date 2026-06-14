@@ -16,7 +16,6 @@ import tensorflow as tf
 import warnings
 warnings.filterwarnings('ignore')
 
-# ─── CONFIG ───────────────────────────────────────────
 BASE_PATH       = "C:/Users/tempadmin/Downloads/archive/for-norm/for-norm/"
 TARGET_SR       = 16000
 TARGET_DURATION = 2.0
@@ -24,7 +23,6 @@ TARGET_SAMPLES  = int(TARGET_SR * TARGET_DURATION)
 N_MELS          = 64
 HOP_LENGTH      = 256
 
-# ─── REGISTER CUSTOM FUNCTION ─────────────────────────
 @tf.keras.utils.register_keras_serializable()
 def mfm(x):
     shape = tf.shape(x)
@@ -32,7 +30,6 @@ def mfm(x):
     x2 = x[:, :, :, shape[3]//2:]
     return tf.maximum(x1, x2)
 
-# ─── LOAD MODEL & THRESHOLD ───────────────────────────
 print("Loading model...")
 model = tf.keras.models.load_model(
     "best_lcnn_final.keras",
@@ -41,9 +38,8 @@ model = tf.keras.models.load_model(
 
 with open("threshold.json") as f:
     best_thresh = json.load(f)["threshold"]
-print(f"✅ Model loaded. Threshold: {best_thresh:.2f}")
+print(f" Model loaded. Threshold: {best_thresh:.2f}")
 
-# ─── FEATURE EXTRACTION ───────────────────────────────
 def load_and_standardize(file_path):
     audio, sr = librosa.load(file_path, sr=TARGET_SR, mono=True)
     if len(audio) == 0 or np.max(np.abs(audio)) < 1e-6:
@@ -90,7 +86,7 @@ def extract_features(file_path):
     except:
         return None
 
-# ─── LOAD TEST DATA ───────────────────────────────────
+
 def build_dataset(base_path):
     records = []
     for split in ['testing']:
@@ -107,7 +103,6 @@ def build_dataset(base_path):
 
 df = build_dataset(BASE_PATH)
 
-# Balance test set
 real = df[df['label'] == 0]
 fake = df[df['label'] == 1]
 n    = min(len(real), len(fake), 1000)
@@ -116,7 +111,7 @@ test_df = pd.concat([
     resample(fake, n_samples=n, random_state=42, replace=False)
 ]).sample(frac=1, random_state=42)
 
-print(f"\n⏳ Extracting test features...")
+print(f"\n Extracting test features...")
 X_list, y_list = [], []
 for _, row in tqdm(test_df.iterrows(), total=len(test_df)):
     feat = extract_features(row['file_path'])
@@ -126,13 +121,12 @@ for _, row in tqdm(test_df.iterrows(), total=len(test_df)):
 
 X_test = np.array(X_list, dtype=np.float32)
 y_test = np.array(y_list)
-print(f"✅ Test set: {X_test.shape}")
+print(f" Test set: {X_test.shape}")
 
-# ─── PREDICTIONS ──────────────────────────────────────
 y_pred_proba = model.predict(X_test).flatten()
 y_pred       = (y_pred_proba > best_thresh).astype(int)
 
-# ─── METRICS ──────────────────────────────────────────
+
 def compute_eer(y_true, y_scores):
     fpr, tpr, _ = roc_curve(y_true, y_scores)
     fnr = 1 - tpr
@@ -162,18 +156,15 @@ print(f"  Real Accuracy: {real_acc:.2f}%")
 print(f"  Fake Accuracy: {fake_acc:.2f}%")
 print(f"\n{report}")
 
-# ─── GENERATE REPORT FIGURE ───────────────────────────
 fig = plt.figure(figsize=(20, 12))
 gs  = gridspec.GridSpec(2, 3, figure=fig)
 
-# 1. Confusion Matrix
 ax1 = fig.add_subplot(gs[0, 0])
 ConfusionMatrixDisplay(cm, display_labels=['Real','Fake']).plot(
     ax=ax1, colorbar=False, cmap='Blues'
 )
 ax1.set_title('Confusion Matrix', fontsize=14, fontweight='bold')
 
-# 2. ROC Curve
 ax2 = fig.add_subplot(gs[0, 1])
 ax2.plot(fpr, tpr, color='darkorange', lw=2,
          label=f'ROC (AUC = {roc_auc:.3f})')
@@ -184,7 +175,6 @@ ax2.set_title('ROC Curve', fontsize=14, fontweight='bold')
 ax2.legend()
 ax2.grid(True, alpha=0.3)
 
-# 3. Score Distribution
 ax3 = fig.add_subplot(gs[0, 2])
 real_scores = y_pred_proba[y_test == 0]
 fake_scores = y_pred_proba[y_test == 1]
@@ -200,7 +190,6 @@ ax3.set_title('Score Distribution', fontsize=14, fontweight='bold')
 ax3.legend()
 ax3.grid(True, alpha=0.3)
 
-# 4. Metrics Bar Chart
 ax4 = fig.add_subplot(gs[1, 0])
 metrics = ['Accuracy', 'F1 Score', 'Real Acc', 'Fake Acc']
 values  = [test_acc, test_f1, real_acc, fake_acc]
@@ -217,7 +206,7 @@ for bar, val in zip(bars, values):
              f'{val:.1f}%', ha='center', fontsize=10)
 ax4.legend()
 
-# 5. DET Curve
+
 ax5 = fig.add_subplot(gs[1, 1])
 fnr  = 1 - tpr
 ax5.plot(fpr*100, fnr*100, color='blue', lw=2)
@@ -231,27 +220,27 @@ ax5.set_title('DET Curve', fontsize=14, fontweight='bold')
 ax5.legend()
 ax5.grid(True, alpha=0.3)
 
-# 6. Summary Text
+
 ax6 = fig.add_subplot(gs[1, 2])
 ax6.axis('off')
 summary = f"""
 MODEL SUMMARY
-─────────────────────────
+
 Architecture:  LCNN
 Features:      Mel + MFCC + Delta
 Input Shape:   (64, 126, 3)
 Threshold:     {best_thresh:.2f}
 
 RESULTS
-─────────────────────────
-Accuracy:      {test_acc:.2f}%  ✅
-F1 Score:      {test_f1:.2f}%  ✅
-EER:           {test_eer:.2f}%   ✅
-ROC AUC:       {roc_auc:.4f}   ✅
-Real Accuracy: {real_acc:.2f}%  ✅
-Fake Accuracy: {fake_acc:.2f}%  ✅
 
-ALL TARGETS MET ✅
+Accuracy:      {test_acc:.2f}%  
+F1 Score:      {test_f1:.2f}%  
+EER:           {test_eer:.2f}%   
+ROC AUC:       {roc_auc:.4f}   
+Real Accuracy: {real_acc:.2f}%  
+Fake Accuracy: {fake_acc:.2f}%  
+
+ALL TARGETS MET 
 """
 ax6.text(0.05, 0.95, summary, transform=ax6.transAxes,
          fontsize=11, verticalalignment='top',
@@ -263,5 +252,3 @@ plt.suptitle('Deepfake Audio Detection — Evaluation Report',
 plt.tight_layout()
 plt.savefig("evaluation_report.png", dpi=150, bbox_inches='tight')
 plt.show()
-print("✅ Saved evaluation_report.png")
-print("\n🎉 Phase 4 Complete!")
